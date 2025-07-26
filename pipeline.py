@@ -47,3 +47,40 @@ csv_data = """product_id,product_name,category,tags
 22,Mr. Twist Masala,Snacks,"মিস্টার টুইস্ট, snacks, chips"
 """
 df = pd.read_csv(StringIO(csv_data))
+
+# Embedding and Vector Store Setup
+
+documents = [
+    Document(
+        page_content=f"{row['product_name']}. Category: {row['category']}. Tags: {row['tags']}",
+        metadata={
+            "product_id": row['product_id'],
+            "product_name": row['product_name'],
+            "category": row['category']
+        }
+    ) for _, row in df.iterrows()
+]
+
+embedding_model = FastEmbeddings(model_name="BAAI/bge-m3")
+vector_store = Chroma.from_documents(documents, embedding_model)
+retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+
+# LLM and Prompt Setup
+
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Get API key from environment
+groq_api_key = os.getenv("GROQ_API_KEY")
+if not groq_api_key:
+    logger.critical("GROQ_API_KEY environment variable not set")
+    raise ValueError("GROQ_API_KEY environment variable not set")
+logger.info("Successfully loaded GROQ API key")
+
+llm = ChatGroq(
+    temperature=0,
+    model_name="llama3-8b-8192",
+    model_kwargs={"response_format": {"type": "json_object"}},
+)
