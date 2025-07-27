@@ -137,4 +137,37 @@ rag_chain = (
     | StrOutputParser()
 )
 
+# Main Function
+def search_pipeline(query: str) -> dict:
+    """Run full pipeline and return results.
+    
+    Args:
+        query (str): User query in English, Bangla, or mixed language
+        
+    Returns:
+        dict: Contains initial_context, llm_output, and final_results
+    """
+    initial_context = retriever.get_relevant_documents(query)
+
+    llm_output_str = rag_chain.invoke(query)
+    try:
+        llm_output = json.loads(llm_output_str)
+        corrected_query = llm_output.get("corrected_query", query)
+        logger.info(f"Successfully processed query: {query} -> {corrected_query}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing LLM output: {e}\nRaw output: {llm_output_str}")
+        llm_output = None
+        corrected_query = query
+    except Exception as e:
+        logger.exception(f"Unexpected error while processing query: {query}")
+        llm_output = None
+        corrected_query = query
+    
+    final_results = vector_store.similarity_search(corrected_query, k=3)
+
+    return {
+        "initial_context": initial_context,
+        "llm_output": llm_output,
+        "final_results": final_results
+    }
 
