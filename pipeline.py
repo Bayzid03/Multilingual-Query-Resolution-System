@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 from io import StringIO
 from typing import Dict
+from dotenv import load_dotenv; load_dotenv()
 from langchain_groq import ChatGroq
 from langchain.schema import Document
 from langchain.embeddings import FastEmbeddings
@@ -67,11 +68,6 @@ retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
 # LLM and Prompt Setup
 
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
 # Get API key from environment
 groq_api_key = os.getenv("GROQ_API_KEY")
 if not groq_api_key:
@@ -84,3 +80,61 @@ llm = ChatGroq(
     model_name="llama3-8b-8192",
     model_kwargs={"response_format": {"type": "json_object"}},
 )
+
+prompt_template = """
+You are a world-class search query interpretation engine for a Bangladeshi grocery delivery service like Chaldal or Khaas Food.
+Your primary goal is to understand the user's intent, even if their query is misspelled, in Bangla, English, or mixed language.
+Analyze the user's `RAW QUERY` and the `CONTEXT` of semantically similar products retrieved from our catalog.
+Return a single JSON:
+- "corrected_query"
+- "identified_product"
+- "confidence" ("High", "Medium", "Low")
+- "reasoning"
+If no good match, confidence="Low" & identified_product=null.
+
+---
+CONTEXT:
+{context}
+
+RAW QUERY:
+{query}
+
+---
+JSON OUTPUT:
+"""
+
+prompt = ChatPromptTemplate.from_template(prompt_template)
+
+def format_docs(docs):
+    """Format document objects into LLM-friendly context string.
+
+    Serves two key purposes:
+    1. Data Formatting:
+       - Converts list of document objects into formatted strings
+       - Each product appears on a new line
+       - Format: "- [Product Name] | [Full Product Details]"
+    
+    2. Context Preparation:
+       - Creates structured context for LLM processing
+       - Enhances readability for RAG (Retrieval Augmented Generation)
+       - Enables better query interpretation
+
+    Args:
+        docs (List[Document]): List of document objects containing product information
+
+    Returns:
+        str: Formatted string with each product on a new line
+    """
+    return "\n".join([
+        f"- {d.metadata['product_name']} | {d.page_content}"
+        for d in docs
+    ])
+
+rag_chain = (
+    {"context": retriever | format_docs, "query": RunnablePassthrough()}
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
+
